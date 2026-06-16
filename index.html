@@ -415,7 +415,7 @@ const SUPPS=[
 <div id="tab-today" class="page on">
   <div class="streak" id="streak-banner">
     <div><div class="streak-n" id="sk-n">—</div><div class="streak-lbl">day streak</div></div>
-    <div class="streak-msg" id="sk-msg">Loading…</div>
+    <div class="streak-msg" id="sk-msg">Connecting…</div>
   </div>
   <div class="g2 gap">
     <div class="card">
@@ -983,7 +983,19 @@ async function apiPost(b){
 // ══════════ TODAY ══════════
 async function loadToday(){
   const data=await apiGet({action:'getDailyReview',date:TODAY});
-  if(!data){renderDemo();return;}
+  if(!data||data.error){
+    console.error('loadToday failed:',data?.error||'null response');
+    // Show empty state (not demo) — backend connected but no data yet
+    document.getElementById('sk-n').textContent='0';
+    document.getElementById('sk-msg').textContent='No session logged yet today. Go move! 💪';
+    document.getElementById('tm-type').textContent='—';
+    document.getElementById('tm-dur').textContent='—';
+    document.getElementById('tm-ex').textContent='0';
+    document.getElementById('tm-supp').textContent='0/12';
+    renderExTableGrouped([],'today-ex-list');
+    updateKaizenTodayMini();
+    return;
+  }
   renderWater(data.water);
   renderTodayMacros(data.macros);
   loadSupplementCheckState();
