@@ -356,142 +356,7 @@ textarea.fi{resize:vertical;min-height:72px;}
 </head>
 <body>
 <!-- ══ CONFIG SCRIPT ══ -->
-<script>
-const API_URL = 'https://script.google.com/macros/s/AKfycbz2SjXKGrITgt_x0cQGFfIxy9h4aQZUR_2wQUnuNbcr_cxLN22pOr9BDoTM6pg_3tdd/exec';
-const TODAY = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
-let waterMl=0,waterTarget=3000,energyVal=3,selDayType='';
-let foodItems=[],suppState={},charts={},currentRunWeekIdx=0;
-const CAL_KEY='zf_cal_targets';
-let calTargets=JSON.parse(localStorage.getItem(CAL_KEY)||'{"cal":2500,"prot":155,"carbs":250,"fat":70}');
 
-// ══ GAMIFICATION ENGINE ══
-const LEVELS = [
-  {level:1,name:'Rookie',title:'Just Showed Up',xpNeeded:0,xpTo:200,color:'lv-1',icon:'🥋'},
-  {level:2,name:'Fighter',title:'Building the Habit',xpNeeded:200,xpTo:500,color:'lv-2',icon:'💪'},
-  {level:3,name:'Warrior',title:'Discipline Forming',xpNeeded:500,xpTo:1000,color:'lv-3',icon:'⚔️'},
-  {level:4,name:'Athlete',title:'Consistent Performer',xpNeeded:1000,xpTo:2000,color:'lv-4',icon:'🏋️'},
-  {level:5,name:'Champion',title:'Habit Locked In',xpNeeded:2000,xpTo:3500,color:'lv-5',icon:'🏆'},
-  {level:6,name:'Elite',title:'Body Transformation',xpNeeded:3500,xpTo:5500,color:'lv-6',icon:'🔥'},
-  {level:7,name:'Gladiator',title:'Peak Discipline',xpNeeded:5500,xpTo:8000,color:'lv-7',icon:'⚡'},
-  {level:8,name:'Legend',title:'Superhuman Consistency',xpNeeded:8000,xpTo:11500,color:'lv-8',icon:'💫'},
-  {level:9,name:'Saiyan',title:'Transcended Limits',xpNeeded:11500,xpTo:16000,color:'lv-9',icon:'🌟'},
-  {level:10,name:'Super Saiyan',title:'Maximum Overdrive',xpNeeded:16000,xpTo:99999,color:'lv-10',icon:'⚡🔥'},
-];
-
-const XP_REWARDS = {
-  logWorkout: 25,
-  logExercise: 5,     // per set
-  hitWaterGoal: 20,
-  logFood: 3,
-  logRun: 30,
-  kaizenComplete: 50, // all habits done
-  kaizenHabit: 5,     // per habit
-  logSupplement: 3,
-  streakBonus7: 100,
-  streakBonus30: 300,
-  logMeasurement: 15,
-};
-
-const MILESTONES = [
-  {id:'first_workout',icon:'💪',name:'First Blood',desc:'Log your first workout',xp:50,check:s=>s.totalWorkouts>=1},
-  {id:'workout_7',icon:'🔥',name:'Week Warrior',desc:'7 workouts logged',xp:150,check:s=>s.totalWorkouts>=7},
-  {id:'workout_30',icon:'🏋️',name:'Monthly Grind',desc:'30 workouts logged',xp:500,check:s=>s.totalWorkouts>=30},
-  {id:'workout_100',icon:'💯',name:'Century Club',desc:'100 workouts logged',xp:2000,check:s=>s.totalWorkouts>=100},
-  {id:'streak_7',icon:'⚡',name:'Unstoppable',desc:'7-day workout streak',xp:200,check:s=>s.bestStreak>=7},
-  {id:'streak_30',icon:'🌟',name:'Iron Will',desc:'30-day workout streak',xp:1000,check:s=>s.bestStreak>=30},
-  {id:'water_7',icon:'💧',name:'Hydration Hero',desc:'Hit water goal 7 days',xp:100,check:s=>s.waterGoalDays>=7},
-  {id:'protein_7',icon:'🥩',name:'Protein Machine',desc:'Hit protein 7 days',xp:100,check:s=>s.proteinGoalDays>=7},
-  {id:'first_run',icon:'🏃',name:'Runner\'s High',desc:'Log your first run',xp:50,check:s=>s.totalRuns>=1},
-  {id:'run_10k',icon:'🎽',name:'10K Club',desc:'Run 10km in training',xp:200,check:s=>s.maxRunKm>=10},
-  {id:'run_21k',icon:'🏅',name:'Half Marathon',desc:'Run 21km in training',xp:500,check:s=>s.maxRunKm>=21},
-  {id:'kaizen_7',icon:'🧘',name:'Mind & Body',desc:'All habits 7 days running',xp:200,check:s=>s.kaizenStreakDays>=7},
-  {id:'supplement_14',icon:'💊',name:'Stack Master',desc:'Full supplement stack 14 days',xp:150,check:s=>s.fullSuppDays>=14},
-  {id:'exercises_10',icon:'🎯',name:'Exercise Library',desc:'Log 10 different exercises',xp:100,check:s=>s.uniqueExercises>=10},
-  {id:'exercises_25',icon:'🏆',name:'Movement Master',desc:'Log 25 different exercises',xp:300,check:s=>s.uniqueExercises>=25},
-  {id:'measurement_4',icon:'📏',name:'Tracking Obsessed',desc:'Log 4 body measurements',xp:80,check:s=>s.totalMeasurements>=4},
-];
-
-function getGamification(){return JSON.parse(localStorage.getItem('zf_xp')||'{"xp":0,"unlocked":[],"stats":{"totalWorkouts":0,"totalRuns":0,"bestStreak":0,"currentStreak":0,"waterGoalDays":0,"proteinGoalDays":0,"kaizenStreakDays":0,"fullSuppDays":0,"uniqueExercises":0,"totalMeasurements":0,"maxRunKm":0}}');}
-function saveGamification(g){localStorage.setItem('zf_xp',JSON.stringify(g));}
-
-function getCurrentLevel(xp){
-  let lv=LEVELS[0];
-  for(const l of LEVELS){if(xp>=l.xpNeeded)lv=l;else break;}
-  return lv;
-}
-
-function addXP(amount, reason) {
-  const g = getGamification();
-  const oldXP = g.xp;
-  const oldLevel = getCurrentLevel(oldXP);
-  g.xp += amount;
-  const newLevel = getCurrentLevel(g.xp);
-  saveGamification(g);
-  updateXPDisplay();
-  // Level up notification
-  if(newLevel.level > oldLevel.level) {
-    setTimeout(() => showAchievement(newLevel.icon, 'LEVEL UP!', newLevel.name + ' — ' + newLevel.title, '+'+amount+' XP'), 500);
-  }
-  return g.xp;
-}
-
-function checkMilestones(stats) {
-  const g = getGamification();
-  const newUnlocks = [];
-  for(const m of MILESTONES) {
-    if(!g.unlocked.includes(m.id) && m.check(stats)) {
-      g.unlocked.push(m.id);
-      g.xp += m.xp;
-      newUnlocks.push(m);
-    }
-  }
-  saveGamification(g);
-  if(newUnlocks.length) {
-    updateXPDisplay();
-    const m = newUnlocks[0];
-    setTimeout(() => showAchievement(m.icon, 'MILESTONE UNLOCKED', m.name, '+'+m.xp+' XP'), 800);
-  }
-}
-
-function showAchievement(icon, label, title, xpStr) {
-  const el = document.getElementById('achievement-popup');
-  if(!el) return;
-  document.getElementById('ap-icon').textContent = icon;
-  document.getElementById('ap-label').textContent = label;
-  document.getElementById('ap-title').textContent = title;
-  document.getElementById('ap-xp').textContent = xpStr;
-  el.classList.add('show');
-  clearTimeout(el._timer);
-  el._timer = setTimeout(() => el.classList.remove('show'), 3500);
-}
-
-function updateXPDisplay() {
-  const g = getGamification();
-  const lv = getCurrentLevel(g.xp);
-  const nextLv = LEVELS[lv.level] || lv;
-  const xpInLevel = g.xp - lv.xpNeeded;
-  const xpNeeded = lv.xpTo - lv.xpNeeded;
-  const pct = Math.min(100, Math.round(xpInLevel/xpNeeded*100));
-  
-  // Update topbar
-  const xpChip = document.getElementById('tb-xp');
-  if(xpChip) xpChip.textContent = g.xp + ' XP';
-  const lvChip = document.getElementById('tb-level');
-  if(lvChip) lvChip.textContent = lv.icon + ' ' + lv.name;
-  
-  // Update level card if on today tab
-  const lvName = document.getElementById('lv-name');
-  if(lvName) {
-    lvName.textContent = lv.icon + ' ' + lv.name;
-    document.getElementById('lv-sub').textContent = lv.title;
-    document.getElementById('lv-xp-cur').textContent = g.xp + ' XP total';
-    document.getElementById('lv-xp-next').textContent = (lv.xpTo - g.xp) + ' XP to ' + (LEVELS[lv.level]?.name||'Max');
-    document.getElementById('lv-xp-bar').style.width = pct + '%';
-    document.getElementById('lv-badge').className = 'level-badge ' + lv.color;
-    document.getElementById('lv-badge').textContent = 'Level ' + lv.level;
-  }
-}
-</script>
 
 <!-- ══ TOPBAR ══ -->
 <div class="topbar">
@@ -1094,6 +959,141 @@ function updateXPDisplay() {
 <div id="toast"></div>
 
 <script>
+const API_URL = 'https://script.google.com/macros/s/AKfycbz2SjXKGrITgt_x0cQGFfIxy9h4aQZUR_2wQUnuNbcr_cxLN22pOr9BDoTM6pg_3tdd/exec';
+const TODAY = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
+let waterMl=0,waterTarget=3000,energyVal=3,selDayType='';
+let foodItems=[],suppState={},charts={},currentRunWeekIdx=0;
+const CAL_KEY='zf_cal_targets';
+let calTargets=JSON.parse(localStorage.getItem(CAL_KEY)||'{"cal":2500,"prot":155,"carbs":250,"fat":70}');
+
+// ══ GAMIFICATION ENGINE ══
+const LEVELS = [
+  {level:1,name:'Rookie',title:'Just Showed Up',xpNeeded:0,xpTo:200,color:'lv-1',icon:'🥋'},
+  {level:2,name:'Fighter',title:'Building the Habit',xpNeeded:200,xpTo:500,color:'lv-2',icon:'💪'},
+  {level:3,name:'Warrior',title:'Discipline Forming',xpNeeded:500,xpTo:1000,color:'lv-3',icon:'⚔️'},
+  {level:4,name:'Athlete',title:'Consistent Performer',xpNeeded:1000,xpTo:2000,color:'lv-4',icon:'🏋️'},
+  {level:5,name:'Champion',title:'Habit Locked In',xpNeeded:2000,xpTo:3500,color:'lv-5',icon:'🏆'},
+  {level:6,name:'Elite',title:'Body Transformation',xpNeeded:3500,xpTo:5500,color:'lv-6',icon:'🔥'},
+  {level:7,name:'Gladiator',title:'Peak Discipline',xpNeeded:5500,xpTo:8000,color:'lv-7',icon:'⚡'},
+  {level:8,name:'Legend',title:'Superhuman Consistency',xpNeeded:8000,xpTo:11500,color:'lv-8',icon:'💫'},
+  {level:9,name:'Saiyan',title:'Transcended Limits',xpNeeded:11500,xpTo:16000,color:'lv-9',icon:'🌟'},
+  {level:10,name:'Super Saiyan',title:'Maximum Overdrive',xpNeeded:16000,xpTo:99999,color:'lv-10',icon:'⚡🔥'},
+];
+
+const XP_REWARDS = {
+  logWorkout: 25,
+  logExercise: 5,     // per set
+  hitWaterGoal: 20,
+  logFood: 3,
+  logRun: 30,
+  kaizenComplete: 50, // all habits done
+  kaizenHabit: 5,     // per habit
+  logSupplement: 3,
+  streakBonus7: 100,
+  streakBonus30: 300,
+  logMeasurement: 15,
+};
+
+const MILESTONES = [
+  {id:'first_workout',icon:'💪',name:'First Blood',desc:'Log your first workout',xp:50,check:s=>s.totalWorkouts>=1},
+  {id:'workout_7',icon:'🔥',name:'Week Warrior',desc:'7 workouts logged',xp:150,check:s=>s.totalWorkouts>=7},
+  {id:'workout_30',icon:'🏋️',name:'Monthly Grind',desc:'30 workouts logged',xp:500,check:s=>s.totalWorkouts>=30},
+  {id:'workout_100',icon:'💯',name:'Century Club',desc:'100 workouts logged',xp:2000,check:s=>s.totalWorkouts>=100},
+  {id:'streak_7',icon:'⚡',name:'Unstoppable',desc:'7-day workout streak',xp:200,check:s=>s.bestStreak>=7},
+  {id:'streak_30',icon:'🌟',name:'Iron Will',desc:'30-day workout streak',xp:1000,check:s=>s.bestStreak>=30},
+  {id:'water_7',icon:'💧',name:'Hydration Hero',desc:'Hit water goal 7 days',xp:100,check:s=>s.waterGoalDays>=7},
+  {id:'protein_7',icon:'🥩',name:'Protein Machine',desc:'Hit protein 7 days',xp:100,check:s=>s.proteinGoalDays>=7},
+  {id:'first_run',icon:'🏃',name:'Runner\'s High',desc:'Log your first run',xp:50,check:s=>s.totalRuns>=1},
+  {id:'run_10k',icon:'🎽',name:'10K Club',desc:'Run 10km in training',xp:200,check:s=>s.maxRunKm>=10},
+  {id:'run_21k',icon:'🏅',name:'Half Marathon',desc:'Run 21km in training',xp:500,check:s=>s.maxRunKm>=21},
+  {id:'kaizen_7',icon:'🧘',name:'Mind & Body',desc:'All habits 7 days running',xp:200,check:s=>s.kaizenStreakDays>=7},
+  {id:'supplement_14',icon:'💊',name:'Stack Master',desc:'Full supplement stack 14 days',xp:150,check:s=>s.fullSuppDays>=14},
+  {id:'exercises_10',icon:'🎯',name:'Exercise Library',desc:'Log 10 different exercises',xp:100,check:s=>s.uniqueExercises>=10},
+  {id:'exercises_25',icon:'🏆',name:'Movement Master',desc:'Log 25 different exercises',xp:300,check:s=>s.uniqueExercises>=25},
+  {id:'measurement_4',icon:'📏',name:'Tracking Obsessed',desc:'Log 4 body measurements',xp:80,check:s=>s.totalMeasurements>=4},
+];
+
+function getGamification(){return JSON.parse(localStorage.getItem('zf_xp')||'{"xp":0,"unlocked":[],"stats":{"totalWorkouts":0,"totalRuns":0,"bestStreak":0,"currentStreak":0,"waterGoalDays":0,"proteinGoalDays":0,"kaizenStreakDays":0,"fullSuppDays":0,"uniqueExercises":0,"totalMeasurements":0,"maxRunKm":0}}');}
+function saveGamification(g){localStorage.setItem('zf_xp',JSON.stringify(g));}
+
+function getCurrentLevel(xp){
+  let lv=LEVELS[0];
+  for(const l of LEVELS){if(xp>=l.xpNeeded)lv=l;else break;}
+  return lv;
+}
+
+function addXP(amount, reason) {
+  const g = getGamification();
+  const oldXP = g.xp;
+  const oldLevel = getCurrentLevel(oldXP);
+  g.xp += amount;
+  const newLevel = getCurrentLevel(g.xp);
+  saveGamification(g);
+  updateXPDisplay();
+  // Level up notification
+  if(newLevel.level > oldLevel.level) {
+    setTimeout(() => showAchievement(newLevel.icon, 'LEVEL UP!', newLevel.name + ' — ' + newLevel.title, '+'+amount+' XP'), 500);
+  }
+  return g.xp;
+}
+
+function checkMilestones(stats) {
+  const g = getGamification();
+  const newUnlocks = [];
+  for(const m of MILESTONES) {
+    if(!g.unlocked.includes(m.id) && m.check(stats)) {
+      g.unlocked.push(m.id);
+      g.xp += m.xp;
+      newUnlocks.push(m);
+    }
+  }
+  saveGamification(g);
+  if(newUnlocks.length) {
+    updateXPDisplay();
+    const m = newUnlocks[0];
+    setTimeout(() => showAchievement(m.icon, 'MILESTONE UNLOCKED', m.name, '+'+m.xp+' XP'), 800);
+  }
+}
+
+function showAchievement(icon, label, title, xpStr) {
+  const el = document.getElementById('achievement-popup');
+  if(!el) return;
+  document.getElementById('ap-icon').textContent = icon;
+  document.getElementById('ap-label').textContent = label;
+  document.getElementById('ap-title').textContent = title;
+  document.getElementById('ap-xp').textContent = xpStr;
+  el.classList.add('show');
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => el.classList.remove('show'), 3500);
+}
+
+function updateXPDisplay() {
+  const g = getGamification();
+  const lv = getCurrentLevel(g.xp);
+  const nextLv = LEVELS[lv.level] || lv;
+  const xpInLevel = g.xp - lv.xpNeeded;
+  const xpNeeded = lv.xpTo - lv.xpNeeded;
+  const pct = Math.min(100, Math.round(xpInLevel/xpNeeded*100));
+  
+  // Update topbar
+  const xpChip = document.getElementById('tb-xp');
+  if(xpChip) xpChip.textContent = g.xp + ' XP';
+  const lvChip = document.getElementById('tb-level');
+  if(lvChip) lvChip.textContent = lv.icon + ' ' + lv.name;
+  
+  // Update level card if on today tab
+  const lvName = document.getElementById('lv-name');
+  if(lvName) {
+    lvName.textContent = lv.icon + ' ' + lv.name;
+    document.getElementById('lv-sub').textContent = lv.title;
+    document.getElementById('lv-xp-cur').textContent = g.xp + ' XP total';
+    document.getElementById('lv-xp-next').textContent = (lv.xpTo - g.xp) + ' XP to ' + (LEVELS[lv.level]?.name||'Max');
+    document.getElementById('lv-xp-bar').style.width = pct + '%';
+    document.getElementById('lv-badge').className = 'level-badge ' + lv.color;
+    document.getElementById('lv-badge').textContent = 'Level ' + lv.level;
+  }
+}
+
 // ══════════ FOOD DATABASE ══════════
 const FOOD_DB = [
   {name:'Egg (whole)',unit:'egg',cal:78,p:6,c:0.6,f:5},
@@ -1162,7 +1162,6 @@ const FOOD_DB = [
 ];
 
 
-
 const MUSCLE_MAP = {
   'Barbell Bench Press':'Chest','Dumbbell Bench Press':'Chest','Incline Barbell Press':'Chest',
   'Incline Dumbbell Press':'Chest','Decline Dumbbell Press':'Chest','Cable Chest Fly':'Chest',
@@ -1182,7 +1181,6 @@ const MUSCLE_MAP = {
   'Plank':'Core / Abs','Bicycle Crunches':'Core / Abs','Russian Twists':'Core / Abs',
   'Decline Sit-ups':'Core / Abs','Mountain Climbers':'Core / Abs'
 };
-
 
 const RUN_PHASES=[
   {name:"Phase 1 — Base building",badge:"Wk 1–6",cls:"rp-base",desc:"No intensity — build the habit. 3 runs/week at easy pace. 3 gym days. 1 rest. Walk breaks are fine.",weeks:[
@@ -1238,10 +1236,8 @@ const RUN_PHASES=[
     {wk:40,days:["Easy 5k","Push","Easy 3k","Pull","Rest","Easy 3k","RACE 🏁"],tip:"Carb load Wed–Fri. Everything is ready. You are ready."},
   ]},
 ];
-const DN7=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-</script>
 
-<script>
+
 // ══ YOUR ACTUAL SUPPLEMENT STACK ══
 const MY_SUPPS = [
   // Morning group
@@ -1258,22 +1254,15 @@ const MY_SUPPS = [
 
 // ══ API ══
 async function apiGet(p){
-  return new Promise((resolve)=>{
-    const cbName='_cb'+Date.now()+'_'+Math.floor(Math.random()*1e6);
+  try{
     const params=new URLSearchParams(p);
-    params.set('callback',cbName);
-    const script=document.createElement('script');
-    const timer=setTimeout(()=>{
-      delete window[cbName];script.remove();
-      console.error('apiGet timeout',p);resolve(null);
-    },12000);
-    window[cbName]=(data)=>{
-      clearTimeout(timer);delete window[cbName];script.remove();resolve(data);
-    };
-    script.src=API_URL+'?'+params.toString();
-    script.onerror=()=>{clearTimeout(timer);delete window[cbName];resolve(null);};
-    document.head.appendChild(script);
-  });
+    params.set('callback','_cb');
+    const r=await fetch(API_URL+'?'+params.toString(),{redirect:'follow'});
+    const text=await r.text();
+    // Parse JSONP: _cb({...}); -> extract JSON
+    const json=text.replace(/^_cb\(/,'').replace(/\);?\s*$/,'');
+    return JSON.parse(json);
+  }catch(e){console.error('apiGet',e);return null;}
 }
 async function apiPost(b){
   try{
@@ -1331,10 +1320,6 @@ function goTab(id, btn) {
 
 // ══ TODAY ══
 async function loadToday(){
-  // Render empty state first so screen is never blank
-  document.getElementById('sk-n').textContent='—';
-  document.getElementById('sk-msg').textContent='Loading…';
-  
   const data=await apiGet({action:'getDailyReview',date:TODAY});
   if(!data||data.error){
     document.getElementById('sk-n').textContent='0';
@@ -1347,36 +1332,28 @@ async function loadToday(){
     updateKaizenTodayMini();
     return;
   }
-
-  // Render everything from dailyReview immediately
   renderWater(data.water);
   renderTodayMacros(data.macros);
+  loadSupplementCheckState();
   if(data.workout){
     document.getElementById('tm-type').textContent=data.workout.day_type||'—';
     document.getElementById('tm-dur').textContent=data.workout.duration_min||'—';
-  } else {
-    document.getElementById('tm-type').textContent='—';
-    document.getElementById('tm-dur').textContent='—';
   }
   document.getElementById('tm-ex').textContent=data.exercises?data.exercises.length:'0';
   renderExTableGrouped(data.exercises||[],'today-ex-list');
-  document.getElementById('sk-n').textContent=data.workout?'✓':'0';
+  const streakData = await apiGet({action:'getAllWorkouts'});
+  const streak = calcStreak(streakData||[]);
+  document.getElementById('sk-n').textContent=streak;
   document.getElementById('sk-msg').textContent=data.workout?'Session logged ✓ Keep the chain.':'No session yet — go move! 💪';
+  
+  // Update gamification stats
+  const g = getGamification();
+  g.stats.currentStreak = streak;
+  g.stats.bestStreak = Math.max(g.stats.bestStreak||0, streak);
+  if(data.workout) g.stats.totalWorkouts = (g.stats.totalWorkouts||0)+0; // updated on save
+  saveGamification(g);
+  checkMilestones(g.stats);
   updateKaizenTodayMini();
-  loadSupplementCheckState();
-
-  // Streak calc runs async in background — doesn't block UI
-  apiGet({action:'getAllWorkouts'}).then(streakData => {
-    if(!streakData) return;
-    const streak = calcStreak(Array.isArray(streakData) ? streakData : []);
-    document.getElementById('sk-n').textContent=streak;
-    const g = getGamification();
-    g.stats.currentStreak = streak;
-    g.stats.bestStreak = Math.max(g.stats.bestStreak||0, streak);
-    saveGamification(g);
-    checkMilestones(g.stats);
-    updateXPDisplay();
-  }).catch(()=>{});
 }
 
 function calcStreak(workouts) {
@@ -1918,6 +1895,7 @@ function renderReadLog(){
 }
 
 // ══ RUNNING ══
+const DN7=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 function getDayRunCls(d){if(!d)return'rwc';const l=d.toLowerCase();if(l.includes('race'))return'rwc rwc-long';if(l.includes('long'))return'rwc rwc-long';if(l.includes('tempo')||l.includes('interval')||l.includes('trial'))return'rwc rwc-cross';if(l.includes('easy')||l.includes('recovery'))return'rwc rwc-run';return'rwc';}
 function renderRunPlan(){
   const pi=parseInt(document.getElementById('run-phase-sel').value);
@@ -2008,7 +1986,9 @@ function toastError(msg){toast('✗ '+msg,true,4000);}
 
 // ══ UTILS ══
 function fmtDate(str){if(!str)return'';const d=new Date(str+'T00:00:00');return d.toLocaleDateString('en-IN',{day:'numeric',month:'short'});}
-
+</script>
+</body>
+</html>
 </script>
 </body>
 </html>
