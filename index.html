@@ -1918,9 +1918,7 @@ function renderReadLog(){
 }
 
 // ══ RUNNING ══
-const DN7=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 function getDayRunCls(d){if(!d)return'rwc';const l=d.toLowerCase();if(l.includes('race'))return'rwc rwc-long';if(l.includes('long'))return'rwc rwc-long';if(l.includes('tempo')||l.includes('interval')||l.includes('trial'))return'rwc rwc-cross';if(l.includes('easy')||l.includes('recovery'))return'rwc rwc-run';return'rwc';}
-let currentRunWeekIdx=0;
 function renderRunPlan(){
   const pi=parseInt(document.getElementById('run-phase-sel').value);
   const ph=RUN_PHASES[pi];
