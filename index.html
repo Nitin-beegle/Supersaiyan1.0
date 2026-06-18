@@ -1258,11 +1258,22 @@ const MY_SUPPS = [
 
 // ══ API ══
 async function apiGet(p){
-  try{
-    const r=await fetch(API_URL+'?'+new URLSearchParams(p),{redirect:'follow'});
-    const text=await r.text();
-    return JSON.parse(text);
-  }catch(e){console.error('apiGet',e);return null;}
+  return new Promise((resolve)=>{
+    const cbName='_cb'+Date.now()+'_'+Math.floor(Math.random()*1e6);
+    const params=new URLSearchParams(p);
+    params.set('callback',cbName);
+    const script=document.createElement('script');
+    const timer=setTimeout(()=>{
+      delete window[cbName];script.remove();
+      console.error('apiGet timeout',p);resolve(null);
+    },12000);
+    window[cbName]=(data)=>{
+      clearTimeout(timer);delete window[cbName];script.remove();resolve(data);
+    };
+    script.src=API_URL+'?'+params.toString();
+    script.onerror=()=>{clearTimeout(timer);delete window[cbName];resolve(null);};
+    document.head.appendChild(script);
+  });
 }
 async function apiPost(b){
   try{
@@ -1320,6 +1331,10 @@ function goTab(id, btn) {
 
 // ══ TODAY ══
 async function loadToday(){
+  // Render empty state first so screen is never blank
+  document.getElementById('sk-n').textContent='—';
+  document.getElementById('sk-msg').textContent='Loading…';
+  
   const data=await apiGet({action:'getDailyReview',date:TODAY});
   if(!data||data.error){
     document.getElementById('sk-n').textContent='0';
@@ -1332,28 +1347,36 @@ async function loadToday(){
     updateKaizenTodayMini();
     return;
   }
+
+  // Render everything from dailyReview immediately
   renderWater(data.water);
   renderTodayMacros(data.macros);
-  loadSupplementCheckState();
   if(data.workout){
     document.getElementById('tm-type').textContent=data.workout.day_type||'—';
     document.getElementById('tm-dur').textContent=data.workout.duration_min||'—';
+  } else {
+    document.getElementById('tm-type').textContent='—';
+    document.getElementById('tm-dur').textContent='—';
   }
   document.getElementById('tm-ex').textContent=data.exercises?data.exercises.length:'0';
   renderExTableGrouped(data.exercises||[],'today-ex-list');
-  const streakData = await apiGet({action:'getAllWorkouts'});
-  const streak = calcStreak(streakData||[]);
-  document.getElementById('sk-n').textContent=streak;
+  document.getElementById('sk-n').textContent=data.workout?'✓':'0';
   document.getElementById('sk-msg').textContent=data.workout?'Session logged ✓ Keep the chain.':'No session yet — go move! 💪';
-  
-  // Update gamification stats
-  const g = getGamification();
-  g.stats.currentStreak = streak;
-  g.stats.bestStreak = Math.max(g.stats.bestStreak||0, streak);
-  if(data.workout) g.stats.totalWorkouts = (g.stats.totalWorkouts||0)+0; // updated on save
-  saveGamification(g);
-  checkMilestones(g.stats);
   updateKaizenTodayMini();
+  loadSupplementCheckState();
+
+  // Streak calc runs async in background — doesn't block UI
+  apiGet({action:'getAllWorkouts'}).then(streakData => {
+    if(!streakData) return;
+    const streak = calcStreak(Array.isArray(streakData) ? streakData : []);
+    document.getElementById('sk-n').textContent=streak;
+    const g = getGamification();
+    g.stats.currentStreak = streak;
+    g.stats.bestStreak = Math.max(g.stats.bestStreak||0, streak);
+    saveGamification(g);
+    checkMilestones(g.stats);
+    updateXPDisplay();
+  }).catch(()=>{});
 }
 
 function calcStreak(workouts) {
